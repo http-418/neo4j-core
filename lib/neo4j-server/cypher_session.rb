@@ -141,15 +141,17 @@ module Neo4j::Server
     def search_result_to_enumerable(response)
       return [] unless response.data
 
-      Enumerator.new do |yielder|
-        response.data.each do |data|
-          yielder << CypherNode.new(self, data[0]).wrapper
+      def descent(outer_data)
+        Enumerator.new do |yielder|
+          outer_data.each do |inner_data|
+            yielder << ( inner_data[0].kind_of?(Array) ?
+                         descent( inner_data[0].map{ |n| [n] } ) :
+                         CypherNode.new(self, inner_data[0]).wrapper  )
+          end
         end
       end
+      descent(response.data)
     end
-
-
-
 
   end
 end
