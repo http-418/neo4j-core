@@ -55,6 +55,16 @@ No need to start the server since it is embedded.
 
 ## Neo4j-core API, v3.0
 
+### API Documentation
+
+* [Neo4j::Node](http://www.rubydoc.info/github/andreasronge/neo4j-core/Neo4j/Node)
+* [Neo4j::Relationship](http://www.rubydoc.info/github/andreasronge/neo4j-core/Neo4j/Relationship)
+* [Neo4j::Session](http://www.rubydoc.info/github/andreasronge/neo4j-core/Neo4j/Session)
+* [Neo4j::Label](http://www.rubydoc.info/github/andreasronge/neo4j-core/Neo4j/Label)
+
+See also [Neo4j Docs](http://docs.neo4j.org/)
+
+
 ### Database Session
 
 There are currently two available types of session, one for connecting to a neo4j server
@@ -68,6 +78,19 @@ Open a IRB/Pry session:
   # Using Neo4j Server Cypher Database
   session = Neo4j::Session.open(:server_db)
 ```
+
+### Session Configuration
+
+Example, Basic Authentication:
+
+```ruby
+  Neo4j::Session.open(:server_db, 'http://my.server', basic_auth: { username: 'username', password: 'password'})
+```
+
+The last option hash is passed on to HTTParty. See here for more available options:
+http://rdoc.info/github/jnunemaker/httparty/HTTParty/ClassMethods
+
+### Embedded Session
 
 Using the Neo4j Embedded Database, `:embedded_db`
 
@@ -83,6 +106,8 @@ session.shutdown
 session.running? #=> false
 session.close # make the session not current/default
 ```
+
+### Session.current
 
 When a session has been created it will be stored in the `Neo4j::Session` object.
 Example, get the default session

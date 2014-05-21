@@ -1,3 +1,15 @@
+== 3.0.0.alpha.13
+* Fixing the neo4j:install rake task for systems without wget and Windows (#64, @ausmarton)
+* Support for adding labels on existing nodes closes (#63)
+* Session#query returns a hash for all values in a row (#61, @fiddur)
+
+== 3.0.0.alpha.12
+* Fixing find_nodes to not quote numeric values (#48)
+
+== 3.0.0.alpha.11
+* Added Basic Auth (HTTParty config) configuration on session (#58)
+* Drop nil value on create (#56)
+
 == 3.0.0.alpha.10
 * Fix of data url in cypher session (#55)
 * add escape sequence sanitization to cypher translator (#53)

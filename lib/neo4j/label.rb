@@ -1,4 +1,7 @@
 module Neo4j
+  # A label is a named graph construct that is used to group nodes.
+  # See Neo4j::Node how to create and delete nodes
+  # @see http://docs.neo4j.org/chunked/milestone/graphdb-neo4j-labels.html
   class Label
 
     # @abstract
@@ -67,6 +70,7 @@ module Neo4j
         cypher += condition_to_cypher(query) if query[:conditions] && !query[:conditions].empty?
         cypher += session.query_default_return
         cypher += order_to_cypher(query) if query[:order]
+        cypher += " LIMIT " + query[:limit].to_s if query[:limit] && query[:limit].is_a?(Integer)
 
         response = session._query_or_fail(cypher)
         session.search_result_to_enumerable(response) # TODO make it work in Embedded and refactor

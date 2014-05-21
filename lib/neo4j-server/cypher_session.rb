@@ -1,22 +1,38 @@
 module Neo4j::Server
 
   # Plugin
-  Neo4j::Session.register_db(:server_db) do |endpoint_url|
-    response = HTTParty.get(endpoint_url || 'http://localhost:7474')
-    raise "Server not available on #{endpoint_url} (response code #{response.code})" unless response.code == 200
-    root_data = JSON.parse(response.body)
-    data_url = root_data['data']
-    data_url << '/' unless data_url.end_with?('/') 
-    Neo4j::Server::CypherSession.new(data_url)
+  Neo4j::Session.register_db(:server_db) do |*url_opts|
+    Neo4j::Server::CypherSession.open(*url_opts)
   end
 
   class CypherSession < Neo4j::Session
     include Resource
     include Neo4j::Core::CypherTranslator
-
+    
     alias_method :super_query, :query
 
-    def initialize(data_url)
+
+    # Opens a session to the database
+    # @see Neo4j::Session#open
+    #
+    # @param url - defaults to 'http://localhost:7474' if not given
+    # @params - see https://github.com/jnunemaker/httparty/blob/master/lib/httparty.rb for supported
+    # HTTParty options
+    def self.open(endpoint_url=nil, params = {})
+      endpoint = Neo4jServerEndpoint.new(params)
+      url = endpoint_url || 'http://localhost:7474'
+      response = endpoint.get(url)
+      raise "Server not available on #{url} (response code #{response.code})" unless response.code == 200
+      
+      root_data = JSON.parse(response.body)
+      data_url = root_data['data']
+      data_url << '/' unless data_url.end_with?('/')
+
+      CypherSession.new(data_url, endpoint)
+    end
+
+    def initialize(data_url, endpoint = nil)
+      @endpoint = endpoint || Neo4jServerEndpoint.new(data_url)
       Neo4j::Session.register(self)
       initialize_resource(data_url)
       Neo4j::Session._notify_listeners(:session_available, self)
@@ -27,7 +43,7 @@ module Neo4j::Server
     end
 
     def initialize_resource(data_url)
-      response = HTTParty.get(data_url)
+      response = @endpoint.get(data_url)
       expect_response_code(response,200)
       data_resource = JSON.parse(response.body)
       raise "No data_resource for #{response.body}" unless data_resource
@@ -41,7 +57,7 @@ module Neo4j::Server
     end
 
     def begin_tx
-      Thread.current[:neo4j_curr_tx] = wrap_resource(self, 'transaction', CypherTransaction, nil, :post)
+      Thread.current[:neo4j_curr_tx] = wrap_resource(self, 'transaction', CypherTransaction, nil, :post, @endpoint)
     end
 
     def create_node(props=nil, labels=[])
@@ -78,7 +94,7 @@ module Neo4j::Server
     end
 
     def indexes(label)
-      response = HTTParty.get("#{@resource_url}schema/index/#{label}")
+      response = @endpoint.get("#{@resource_url}schema/index/#{label}")
       expect_response_code(response, 200)
       data_resource = JSON.parse(response.body)
 
@@ -97,9 +113,11 @@ module Neo4j::Server
     end
 
     def find_nodes(label_name, key, value)
+      value = "'#{value}'" if value.is_a? String
+      
       response = _query_or_fail <<-CYPHER
         MATCH (n:`#{label_name}`)
-        WHERE n.#{key} = '#{value}'
+        WHERE n.#{key} = #{value}
         RETURN ID(n)
       CYPHER
       search_result_to_enumerable(response)
@@ -135,7 +153,7 @@ module Neo4j::Server
       else
         url = resource_url('cypher')
         q = params.nil? ? {query: q} : {query: q, params: params}
-        response = HTTParty.post(url, headers: resource_headers, body: q.to_json)
+        response = @endpoint.post(url, headers: resource_headers, body: q.to_json)
         CypherResponse.create_with_no_tx(response)
       end
     end

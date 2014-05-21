@@ -2,6 +2,11 @@ require 'spec_helper'
 
 module Neo4j::Server
   describe CypherSession do
+    
+    before(:each) do
+      @endpoint = Neo4jServerEndpoint.new()
+    end
+
     let(:cypher_response) do
       double('cypher response', error?: false, first_data: [28])
     end
@@ -46,17 +51,60 @@ module Neo4j::Server
       end
 
       it 'allow root resource with urls ending with slash' do
-          HTTParty.should_receive(:get).with('http://localhost:7474').and_return(TestResponse.new(root_resource_with_slash))
-          HTTParty.should_receive(:get).with("http://localhost:7474/db/data/").and_return(TestResponse.new(data_resource))
-          session = Neo4j::Session.create_session(:server_db)
-          expect(session.resource_url).to eq('http://localhost:7474/db/data/')
+        Neo4jServerEndpoint.should_receive(:new).with({}).and_return(@endpoint)
+        
+        @endpoint.should_receive(:get).with('http://localhost:7474').and_return(TestResponse.new(root_resource_with_slash))
+        @endpoint.should_receive(:get).with("http://localhost:7474/db/data/").and_return(TestResponse.new(data_resource))
+        
+        session = Neo4j::Session.create_session(:server_db)
+        expect(session.resource_url).to eq('http://localhost:7474/db/data/')
       end
 
       it 'allow root resource with urls NOT ending with slash' do
-        HTTParty.should_receive(:get).with('http://localhost:7474').and_return(TestResponse.new(root_resource_with_no_slash))
-        HTTParty.should_receive(:get).with("http://localhost:7474/db/data/").and_return(TestResponse.new(data_resource))
+        Neo4jServerEndpoint.should_receive(:new).with({}).and_return(@endpoint)
+        
+        @endpoint.should_receive(:get).with('http://localhost:7474').and_return(TestResponse.new(root_resource_with_no_slash))
+        @endpoint.should_receive(:get).with("http://localhost:7474/db/data/").and_return(TestResponse.new(data_resource))
+
         session = Neo4j::Session.create_session(:server_db)
         expect(session.resource_url).to eq('http://localhost:7474/db/data/')
+      end
+
+      it 'creates session with basic auth params' do
+        base_url = 'http://localhost:7474'
+        auth = {basic_auth: { username: 'username', password: 'password'}}
+        params = [base_url, auth]
+
+        Neo4jServerEndpoint.should_receive(:new).with(auth).and_return(@endpoint)
+        
+        @endpoint.should_receive(:get).with(base_url)
+          .and_return(TestResponse.new(root_resource_with_slash))
+        @endpoint.should_receive(:get).with("http://localhost:7474/db/data/")
+          .and_return(TestResponse.new(data_resource))
+          
+        session = Neo4j::Session.create_session(:server_db, params)
+      end
+
+      it 'does work with two sessions' do
+        base_url = 'http://localhost:7474'
+        auth = {basic_auth: { username: 'username', password: 'password'}}
+        params = [base_url, auth]
+
+        Neo4jServerEndpoint.should_receive(:new).with(auth).and_return(@endpoint)
+        @endpoint.should_receive(:get).with(base_url)
+          .and_return(TestResponse.new(root_resource_with_slash))
+        @endpoint.should_receive(:get).with("http://localhost:7474/db/data/")
+          .and_return(TestResponse.new(data_resource))
+
+        Neo4j::Session.create_session(:server_db, params)
+
+        Neo4jServerEndpoint.should_receive(:new).with({}).and_return(@endpoint)
+        @endpoint.should_receive(:get).with('http://localhost:7474')
+          .and_return(TestResponse.new(root_resource_with_no_slash))
+        @endpoint.should_receive(:get).with("http://localhost:7474/db/data/")
+          .and_return(TestResponse.new(data_resource))
+        
+        Neo4j::Session.create_session(:server_db)
       end
 
     end
@@ -100,7 +148,10 @@ module Neo4j::Server
           response.should_receive(:[]).with('exception').and_return(nil)
           response.should_receive(:[]).with('commit').and_return('http://tx/42/commit')
           session.should_receive(:resource_url).with('transaction', nil).and_return('http://new.tx')
-          HTTParty.should_receive(:post).with('http://new.tx', anything).and_return(response)
+          
+          session.instance_variable_set("@endpoint", @endpoint)
+          @endpoint.should_receive(:post).with('http://new.tx', anything).and_return(response)
+          
           tx = session.begin_tx
           tx.commit_url.should == 'http://tx/42/commit'
           tx.exec_url.should == 'http://tx/42'
@@ -135,6 +186,32 @@ module Neo4j::Server
           n = double("cypher node")
           CypherNode.should_receive(:new).and_return(n)
           session.create_node
+        end
+      end
+
+      describe 'find_nodes' do
+        
+        before do
+          session.stub(:resource_url).and_return
+          session.should_receive(:search_result_to_enumerable).with(cypher_response).and_return
+        end
+
+        it "should produce Cypher query with String values" do
+          cypher_query = "        MATCH (n:`label`)\n        WHERE n.key = 'value'\n        RETURN ID(n)\n"
+          session.should_receive(:_query_or_fail).with(cypher_query).and_return(cypher_response)
+          session.find_nodes(:label,:key,"value")
+        end
+
+        it "should produce Cypher query with Fixnum values" do
+          cypher_query = "        MATCH (n:`label`)\n        WHERE n.key = 4\n        RETURN ID(n)\n"
+          session.should_receive(:_query_or_fail).with(cypher_query).and_return(cypher_response)
+          session.find_nodes(:label,:key,4)
+        end
+
+        it "should produce Cypher query with Float values" do
+          cypher_query = "        MATCH (n:`label`)\n        WHERE n.key = 4.5\n        RETURN ID(n)\n"
+          session.should_receive(:_query_or_fail).with(cypher_query).and_return(cypher_response)
+          session.find_nodes(:label,:key,4.5)
         end
       end
 
